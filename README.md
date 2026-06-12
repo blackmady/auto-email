@@ -25,7 +25,7 @@ npm run dev
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_GITHUB_ACCOUNT/auto-email)
 
-一键部署会在 Cloudflare 中创建 Worker 项目并拉取 GitHub 仓库代码；部署完成后仍需要按下方教程绑定 KV namespace 并配置 secrets，否则登录、配置保存和 Resend 发信功能无法正常工作。
+一键部署会在 Cloudflare 中创建 Worker 项目并拉取 GitHub 仓库代码。为了避免首次部署时因为示例 KV namespace id 无效而失败，`wrangler.toml` 默认不写死 KV id；部署完成后仍需要按下方教程绑定 KV namespace 并配置 secrets，否则登录、配置保存和 Resend 发信功能无法正常工作。
 
 ## Cloudflare 部署与配置教程
 
@@ -72,7 +72,7 @@ npm run dev
    npx wrangler kv namespace create CONFIG_KV --preview
    ```
 
-4. 将命令输出中的 `id` 和 `preview_id` 写入 `wrangler.toml`：
+4. 如果你希望通过 `wrangler.toml` 管理 KV 绑定，可以取消 `wrangler.toml` 中 KV 示例块的注释，并将命令输出中的 `id` 和 `preview_id` 写入配置；如果你使用 Dashboard 绑定 KV，可以跳过这一步：
 
    ```toml
    [[kv_namespaces]]
@@ -97,6 +97,67 @@ npm run dev
    ```
 
 7. 打开部署输出中的 Worker URL，登录后台并完成界面配置。
+
+## 常见部署问题
+
+### 登录提示“服务端未配置 ADMIN_USERNAME、ADMIN_PASSWORD 或 SESSION_SECRET”
+
+这三个值应该配置为 **Secret / Encrypted** 类型，而不是普通明文变量：
+
+- `ADMIN_USERNAME`：后台登录账号
+- `ADMIN_PASSWORD`：后台登录密码
+- `SESSION_SECRET`：用于签名登录 Cookie 的随机长字符串，建议至少 32 位
+
+如果你确认已经配置但仍然报错，请重点检查下面几点：
+
+1. 变量名必须完全一致，区分大小写，不能写成 `ADMIN_USER`、`ADMIN_NAME`、`SESSION_KEY` 等其他名字。
+2. Secrets 必须添加在 **当前访问域名对应的 Worker** 上：Cloudflare Dashboard → Workers & Pages → 你的 Worker → Settings → Variables and Secrets。
+3. 如果使用 Cloudflare Git/一键部署，不要只配置“构建时环境变量”。登录运行时读取的是 Worker runtime secrets，需要在 Worker 的 Variables and Secrets 里配置。
+4. 添加或修改 secrets 后，建议重新部署一次 Worker，或在 Dashboard 保存设置后等待最新版本生效。
+5. 如果你有多个 Worker 或多个环境，请确认访问的域名对应的就是配置了这些 secrets 的那个 Worker。
+
+通过 Wrangler CLI 配置时可以使用：
+
+```bash
+npx wrangler secret put ADMIN_USERNAME
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put SESSION_SECRET
+```
+
+`RESEND_API_KEY` 也应该配置为 Secret 类型，但它只在发信时使用；登录页报这个错误时，主要缺的是上面三个登录相关 secrets。
+
+### 部署后访问域名显示 `Hello World`
+
+本项目代码不会返回 `Hello World`。正常情况下：
+
+- 未登录访问 `/` 会跳转到 `/login`；
+- 已登录但还没有绑定 `CONFIG_KV` 时，会显示“需要绑定 KV”的提示页；
+- 已登录且 KV/secrets 配置完成后，会显示 Auto Email 控制台。
+
+如果你看到 `Hello World`，通常表示线上运行的不是本仓库的 `src/index.ts`，而是 Cloudflare 创建 Worker 时的默认示例代码。请按下面步骤排查：
+
+1. 确认访问的是本项目部署出来的 Worker 域名，而不是 Cloudflare 后台新建的另一个示例 Worker 域名。
+2. 在 Cloudflare Dashboard 打开对应 Worker，进入 **Deployments**，确认最近一次部署来自你的 GitHub 仓库或本地 `wrangler deploy`，而不是 Dashboard 默认模板。
+3. 如果使用一键部署或 Git 集成，请确认：
+   - Build command：`npm install && npx wrangler deploy`
+   - Deploy command：`npx wrangler deploy`
+   - Root directory：仓库根目录
+   - Wrangler 配置文件：仓库根目录的 `wrangler.toml`
+4. 如果你在 Cloudflare Dashboard 的在线编辑器里看到 `return new Response("Hello World!")`，说明当前 Worker 仍是默认模板。请重新用本仓库部署，或把部署源切换到你的 GitHub 仓库后再次部署。
+5. 部署完成后再配置 `CONFIG_KV` 绑定和 encrypted secrets：`RESEND_API_KEY`、`ADMIN_USERNAME`、`ADMIN_PASSWORD`、`SESSION_SECRET`。
+6. 重新访问 Worker 域名；如果代码已正确部署，页面应进入 `/login` 登录页，而不是显示 `Hello World`。
+
+### `KV namespace 'replace-with-production-kv-namespace-id' is not valid`
+
+这是因为 `wrangler.toml` 中使用了示例占位符作为真实 KV namespace id。当前版本已经默认注释掉 KV namespace 配置，首次一键部署不会再带着无效占位符发布。
+
+如果你需要在 `wrangler.toml` 中声明 KV 绑定，请先创建真实 namespace，再把真实 `id` / `preview_id` 填入配置；不要直接使用 `replace-with-production-kv-namespace-id`、`your-production-kv-namespace-id` 等示例文本。
+
+也可以不在 `wrangler.toml` 中声明 KV，在首次部署成功后到 Cloudflare Dashboard 手动添加绑定：
+
+- Binding type：Workers KV
+- Variable name：`CONFIG_KV`
+- KV namespace：选择你创建的 namespace
 
 ## 收件人 CSV 格式
 
