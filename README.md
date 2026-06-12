@@ -25,7 +25,7 @@ npm run dev
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_GITHUB_ACCOUNT/auto-email)
 
-一键部署会在 Cloudflare 中创建 Worker 项目并拉取 GitHub 仓库代码；部署完成后仍需要按下方教程绑定 KV namespace 并配置 secrets，否则登录、配置保存和 Resend 发信功能无法正常工作。
+一键部署会在 Cloudflare 中创建 Worker 项目并拉取 GitHub 仓库代码。为了避免首次部署时因为示例 KV namespace id 无效而失败，`wrangler.toml` 默认不写死 KV id；部署完成后仍需要按下方教程绑定 KV namespace 并配置 secrets，否则登录、配置保存和 Resend 发信功能无法正常工作。
 
 ## Cloudflare 部署与配置教程
 
@@ -72,7 +72,7 @@ npm run dev
    npx wrangler kv namespace create CONFIG_KV --preview
    ```
 
-4. 将命令输出中的 `id` 和 `preview_id` 写入 `wrangler.toml`：
+4. 如果你希望通过 `wrangler.toml` 管理 KV 绑定，可以取消 `wrangler.toml` 中 KV 示例块的注释，并将命令输出中的 `id` 和 `preview_id` 写入配置；如果你使用 Dashboard 绑定 KV，可以跳过这一步：
 
    ```toml
    [[kv_namespaces]]
@@ -97,6 +97,20 @@ npm run dev
    ```
 
 7. 打开部署输出中的 Worker URL，登录后台并完成界面配置。
+
+## 常见部署问题
+
+### `KV namespace 'replace-with-production-kv-namespace-id' is not valid`
+
+这是因为 `wrangler.toml` 中使用了示例占位符作为真实 KV namespace id。当前版本已经默认注释掉 KV namespace 配置，首次一键部署不会再带着无效占位符发布。
+
+如果你需要在 `wrangler.toml` 中声明 KV 绑定，请先创建真实 namespace，再把真实 `id` / `preview_id` 填入配置；不要直接使用 `replace-with-production-kv-namespace-id`、`your-production-kv-namespace-id` 等示例文本。
+
+也可以不在 `wrangler.toml` 中声明 KV，在首次部署成功后到 Cloudflare Dashboard 手动添加绑定：
+
+- Binding type：Workers KV
+- Variable name：`CONFIG_KV`
+- KV namespace：选择你创建的 namespace
 
 ## 收件人 CSV 格式
 

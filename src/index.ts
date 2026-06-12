@@ -1,5 +1,5 @@
 interface Env {
-  CONFIG_KV: KVNamespace;
+  CONFIG_KV?: KVNamespace;
   RESEND_API_KEY: string;
   ADMIN_USERNAME: string;
   ADMIN_PASSWORD: string;
@@ -78,7 +78,7 @@ export default {
     return handleRequest(request, env, ctx);
   },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runCronSend(env));
+    if (env.CONFIG_KV) ctx.waitUntil(runCronSend(env));
   },
 };
 
@@ -105,6 +105,11 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (!(await isAuthenticated(request, env))) {
     if (pathname.startsWith("/api/")) return json({ error: "Unauthorized" }, 401);
     return Response.redirect(`${url.origin}/login`, 303);
+  }
+
+  if (!env.CONFIG_KV) {
+    if (pathname.startsWith("/api/")) return json({ error: "CONFIG_KV binding is not configured. Please bind a Workers KV namespace named CONFIG_KV in Cloudflare." }, 503);
+    if (pathname === "/" && request.method === "GET") return htmlResponse(renderSetupPage());
   }
 
   if (pathname === "/" && request.method === "GET") return htmlResponse(renderAppPage());
@@ -193,7 +198,7 @@ async function saveConfig(request: Request, env: Env): Promise<Response> {
   };
   const validation = validateConfig(config);
   if (validation.length) return json({ errors: validation }, 400);
-  await env.CONFIG_KV.put(CONFIG_KEY, JSON.stringify(config));
+  await env.CONFIG_KV!.put(CONFIG_KEY, JSON.stringify(config));
   return json({ config });
 }
 
@@ -222,11 +227,11 @@ async function uploadAttachment(request: Request, env: Env): Promise<Response> {
     base64: arrayBufferToBase64(await file.arrayBuffer()),
     createdAt: new Date().toISOString(),
   };
-  await env.CONFIG_KV.put(attachmentKey(id), JSON.stringify(record));
+  await env.CONFIG_KV!.put(attachmentKey(id), JSON.stringify(record));
   const config = await readConfig(env);
   config.attachmentIds = Array.from(new Set([...config.attachmentIds, id]));
   config.updatedAt = new Date().toISOString();
-  await env.CONFIG_KV.put(CONFIG_KEY, JSON.stringify(config));
+  await env.CONFIG_KV!.put(CONFIG_KEY, JSON.stringify(config));
   return json({ attachment: stripAttachmentContent(record), config });
 }
 
@@ -240,7 +245,7 @@ async function deleteAttachment(id: string, env: Env): Promise<Response> {
   const config = await readConfig(env);
   config.attachmentIds = config.attachmentIds.filter((item) => item !== id);
   config.updatedAt = new Date().toISOString();
-  await Promise.all([env.CONFIG_KV.delete(attachmentKey(id)), env.CONFIG_KV.put(CONFIG_KEY, JSON.stringify(config))]);
+  await Promise.all([env.CONFIG_KV!.delete(attachmentKey(id)), env.CONFIG_KV!.put(CONFIG_KEY, JSON.stringify(config))]);
   return json({ ok: true, config });
 }
 
@@ -317,15 +322,15 @@ async function runCronSend(env: Env): Promise<void> {
   const now = Date.now();
   const lastRun = config.lastCronRunAt ? Date.parse(config.lastCronRunAt) : 0;
   if (lastRun && now - lastRun < config.cronOnlyOncePerHours * 60 * 60 * 1000) return;
-  const locked = await env.CONFIG_KV.get(CRON_LOCK_KEY);
+  const locked = await env.CONFIG_KV!.get(CRON_LOCK_KEY);
   if (locked && now - Number(locked) < 10 * 60 * 1000) return;
-  await env.CONFIG_KV.put(CRON_LOCK_KEY, String(now), { expirationTtl: 600 });
+  await env.CONFIG_KV!.put(CRON_LOCK_KEY, String(now), { expirationTtl: 600 });
   try {
     await createAndSendBatch(env, "cron");
     config.lastCronRunAt = new Date().toISOString();
-    await env.CONFIG_KV.put(CONFIG_KEY, JSON.stringify(config));
+    await env.CONFIG_KV!.put(CONFIG_KEY, JSON.stringify(config));
   } finally {
-    await env.CONFIG_KV.delete(CRON_LOCK_KEY);
+    await env.CONFIG_KV!.delete(CRON_LOCK_KEY);
   }
 }
 
@@ -343,29 +348,29 @@ async function getSendStatus(env: Env): Promise<Response> {
 }
 
 async function saveSendRecord(env: Env, record: SendRecord): Promise<void> {
-  await env.CONFIG_KV.put(sendRecordKey(record.id), JSON.stringify(record));
+  await env.CONFIG_KV!.put(sendRecordKey(record.id), JSON.stringify(record));
   const index = await readStatusIndex(env);
   const next = [record.id, ...index.filter((id) => id !== record.id)].slice(0, MAX_STATUS_RECORDS);
-  await env.CONFIG_KV.put(STATUS_INDEX_KEY, JSON.stringify(next));
+  await env.CONFIG_KV!.put(STATUS_INDEX_KEY, JSON.stringify(next));
 }
 
 async function readSendRecords(env: Env): Promise<SendRecord[]> {
   const index = await readStatusIndex(env);
-  const records = await Promise.all(index.map((id) => env.CONFIG_KV.get<SendRecord>(sendRecordKey(id), "json")));
+  const records = await Promise.all(index.map((id) => env.CONFIG_KV!.get<SendRecord>(sendRecordKey(id), "json")));
   return records.filter((record): record is SendRecord => Boolean(record));
 }
 
 async function readStatusIndex(env: Env): Promise<string[]> {
-  return (await env.CONFIG_KV.get<string[]>(STATUS_INDEX_KEY, "json")) || [];
+  return (await env.CONFIG_KV!.get<string[]>(STATUS_INDEX_KEY, "json")) || [];
 }
 
 async function readConfig(env: Env): Promise<AppConfig> {
-  const stored = await env.CONFIG_KV.get<Partial<AppConfig>>(CONFIG_KEY, "json");
+  const stored = await env.CONFIG_KV!.get<Partial<AppConfig>>(CONFIG_KEY, "json");
   return { ...DEFAULT_CONFIG, ...(stored || {}) };
 }
 
 async function readAttachments(env: Env, ids: string[]): Promise<AttachmentRecord[]> {
-  const records = await Promise.all(ids.map((id) => env.CONFIG_KV.get<AttachmentRecord>(attachmentKey(id), "json")));
+  const records = await Promise.all(ids.map((id) => env.CONFIG_KV!.get<AttachmentRecord>(attachmentKey(id), "json")));
   return records.filter((record): record is AttachmentRecord => Boolean(record));
 }
 
@@ -449,6 +454,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char] || char);
+}
+
+function renderSetupPage(): string {
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>配置 CONFIG_KV</title>${style()}</head><body class="login"><main class="card login-card"><h1>需要绑定 KV</h1><p>Worker 已部署成功，但还没有绑定名为 <strong>CONFIG_KV</strong> 的 Workers KV namespace。</p><div class="alert">请在 Cloudflare Dashboard → Workers & Pages → 当前 Worker → Settings → Bindings 中添加 KV 绑定，变量名必须为 CONFIG_KV，然后重新部署或保存设置。</div><form method="post" action="/logout"><button class="secondary">退出登录</button></form></main></body></html>`;
 }
 
 function renderLoginPage(error = ""): string {
