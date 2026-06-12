@@ -1,0 +1,21 @@
+name = "auto-email"
+main = "src/index.ts"
+compatibility_date = "2026-06-12"
+
+# Required after the first deployment:
+# Bind a Workers KV namespace named CONFIG_KV in the Cloudflare dashboard
+# (Workers & Pages -> your Worker -> Settings -> Bindings) or uncomment this
+# block after replacing the placeholder IDs with real namespace IDs.
+# [[kv_namespaces]]
+# binding = "CONFIG_KV"
+# id = "your-production-kv-namespace-id"
+# preview_id = "your-preview-kv-namespace-id"
+
+# Secrets to configure outside of the UI:
+#   wrangler secret put RESEND_API_KEY
+#   wrangler secret put ADMIN_USERNAME
+#   wrangler secret put ADMIN_PASSWORD
+#   wrangler secret put SESSION_SECRET
+
+[triggers]
+crons = ["*/30 * * * *"]
