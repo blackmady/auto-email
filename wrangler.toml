@@ -1,0 +1,18 @@
+name = "auto-email"
+main = "src/index.ts"
+compatibility_date = "2026-06-12"
+
+# Store all UI-managed configuration, attachments, and sending status here.
+[[kv_namespaces]]
+binding = "CONFIG_KV"
+id = "replace-with-production-kv-namespace-id"
+preview_id = "replace-with-preview-kv-namespace-id"
+
+# Secrets to configure outside of the UI:
+#   wrangler secret put RESEND_API_KEY
+#   wrangler secret put ADMIN_USERNAME
+#   wrangler secret put ADMIN_PASSWORD
+#   wrangler secret put SESSION_SECRET
+
+[triggers]
+crons = ["*/30 * * * *"]
