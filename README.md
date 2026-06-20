@@ -27,6 +27,8 @@ npm run dev
 
 一键部署会在 Cloudflare 中创建 Worker 项目并拉取 GitHub 仓库代码。为了避免首次部署时因为示例 KV namespace id 无效而失败，`wrangler.toml` 默认不写死 KV id；部署完成后仍需要按下方教程绑定 KV namespace 并配置 secrets，否则登录、配置保存和 Resend 发信功能无法正常工作。
 
+如果你使用 Git 自动部署，每次提交后绑定又消失，原因通常是自动部署执行 `wrangler deploy` 时会以仓库中的 Wrangler 配置作为发布配置；Dashboard 里手动添加但没有写进部署配置的 KV 绑定可能被新版本覆盖。代码层面的解决方式是：在 Cloudflare 的 Git/Build 环境变量中设置 `CONFIG_KV_NAMESPACE_ID`（可选再设置 `CONFIG_KV_PREVIEW_NAMESPACE_ID`），本项目的 `npm run deploy` 会在部署时自动把 `CONFIG_KV` 绑定写入临时 Wrangler 配置，从而避免每次提交后重新手动绑定。
+
 ## Cloudflare 部署与配置教程
 
 ### 方式一：通过一键部署按钮
@@ -72,7 +74,14 @@ npm run dev
    npx wrangler kv namespace create CONFIG_KV --preview
    ```
 
-4. 如果你希望通过 `wrangler.toml` 管理 KV 绑定，可以取消 `wrangler.toml` 中 KV 示例块的注释，并将命令输出中的 `id` 和 `preview_id` 写入配置；如果你使用 Dashboard 绑定 KV，可以跳过这一步：
+4. 推荐把 KV namespace id 放进部署环境变量，让 Git 自动部署也携带绑定：
+
+   - `CONFIG_KV_NAMESPACE_ID`：生产 KV namespace id
+   - `CONFIG_KV_PREVIEW_NAMESPACE_ID`：预览 KV namespace id，可选；不填时部署脚本会复用生产 id
+
+   设置后使用 `npm run deploy` 即可。部署脚本会生成临时 Wrangler 配置，不会把你的实际 namespace id 写回仓库。
+
+   如果你更希望直接通过 `wrangler.toml` 管理 KV 绑定，也可以取消 `wrangler.toml` 中 KV 示例块的注释，并将命令输出中的 `id` 和 `preview_id` 写入配置：
 
    ```toml
    [[kv_namespaces]]
@@ -139,8 +148,8 @@ npx wrangler secret put SESSION_SECRET
 1. 确认访问的是本项目部署出来的 Worker 域名，而不是 Cloudflare 后台新建的另一个示例 Worker 域名。
 2. 在 Cloudflare Dashboard 打开对应 Worker，进入 **Deployments**，确认最近一次部署来自你的 GitHub 仓库或本地 `wrangler deploy`，而不是 Dashboard 默认模板。
 3. 如果使用一键部署或 Git 集成，请确认：
-   - Build command：`npm install && npx wrangler deploy`
-   - Deploy command：`npx wrangler deploy`
+   - Build command：`npm install`
+   - Deploy command：`npm run deploy`
    - Root directory：仓库根目录
    - Wrangler 配置文件：仓库根目录的 `wrangler.toml`
 4. 如果你在 Cloudflare Dashboard 的在线编辑器里看到 `return new Response("Hello World!")`，说明当前 Worker 仍是默认模板。请重新用本仓库部署，或把部署源切换到你的 GitHub 仓库后再次部署。
@@ -153,7 +162,7 @@ npx wrangler secret put SESSION_SECRET
 
 如果你需要在 `wrangler.toml` 中声明 KV 绑定，请先创建真实 namespace，再把真实 `id` / `preview_id` 填入配置；不要直接使用 `replace-with-production-kv-namespace-id`、`your-production-kv-namespace-id` 等示例文本。
 
-也可以不在 `wrangler.toml` 中声明 KV，在首次部署成功后到 Cloudflare Dashboard 手动添加绑定：
+如果只部署一次，也可以不在 `wrangler.toml` 中声明 KV，在首次部署成功后到 Cloudflare Dashboard 手动添加绑定；但使用 Git 自动部署时，建议使用 `CONFIG_KV_NAMESPACE_ID` 或把真实 id 写入 `wrangler.toml`，否则后续部署可能再次覆盖手动绑定：
 
 - Binding type：Workers KV
 - Variable name：`CONFIG_KV`
